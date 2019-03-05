@@ -191,15 +191,26 @@ defmodule QCloud.COS do
   end
 
   defp _parse_response({:ok, %HTTPoison.Response{status_code: status_code} = response}) do
+    response |> IO.inspect()
+
     error =
       response.body
-      |> SweetXml.xpath(~x"//Error",
-        code: ~x"./Code/text()"so,
-        message: ~x"./Message/text()"so,
-        request_id: ~x"./RequestId/text()"so,
-        resource: ~x"./Resource/text()"so,
-        trace_id: ~x"./TraceId/text()"so
-      )
+      |> case do
+        "" ->
+          %{
+            code: "Error",
+            message: "Error"
+          }
+
+        body ->
+          SweetXml.xpath(body, ~x"//Error",
+            code: ~x"./Code/text()"so,
+            message: ~x"./Message/text()"so,
+            request_id: ~x"./RequestId/text()"so,
+            resource: ~x"./Resource/text()"so,
+            trace_id: ~x"./TraceId/text()"so
+          )
+      end
 
     {:error, status_code, %{body: response.body, headers: response.headers, error: error}}
   end
