@@ -146,7 +146,7 @@ defmodule QCloud.COS do
       [
         opts[:method],
         opts[:uri],
-        "2",
+        "",
         headers |> URI.encode_query(),
         ""
       ]
