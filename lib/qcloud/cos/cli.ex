@@ -1,4 +1,10 @@
 defmodule QCloud.COS do
+  @moduledoc """
+  doc: https://cloud.tencent.com/document/product/436/7778
+  """
+
+  import SweetXml
+
   @configs Application.get_env(:qcloud, :apps)
 
   def get_config(app) do
@@ -7,6 +13,8 @@ defmodule QCloud.COS do
 
   @doc """
   获取对象的头信息
+
+  doc: https://cloud.tencent.com/document/product/436/7745
   """
   def head_object(app, path) do
     config = app |> get_config()
@@ -26,10 +34,13 @@ defmodule QCloud.COS do
          gmt_date: gmt_date
        )}
     ])
+    |> _parse_response()
   end
 
   @doc """
   删除对象
+
+  doc: https://cloud.tencent.com/document/product/436/8289
   """
   def delete_object(app, path) do
     config = app |> get_config()
@@ -49,10 +60,13 @@ defmodule QCloud.COS do
          gmt_date: gmt_date
        )}
     ])
+    |> _parse_response()
   end
 
   @doc """
   获取对象数据
+
+  doc: https://cloud.tencent.com/document/product/436/7753
   """
   def get_object(app, path) do
     config = app |> get_config()
@@ -72,10 +86,13 @@ defmodule QCloud.COS do
          gmt_date: gmt_date
        )}
     ])
+    |> _parse_response()
   end
 
   @doc """
   提交对象数据
+
+  doc: https://cloud.tencent.com/document/product/436/7749
   """
   def put_object(app, file, content_type, path) do
     config = app |> get_config()
@@ -100,6 +117,7 @@ defmodule QCloud.COS do
          storage_class: storage_class
        )}
     ])
+    |> _parse_response()
   end
 
   defp _auth_string(opts) do
@@ -128,7 +146,7 @@ defmodule QCloud.COS do
       [
         opts[:method],
         opts[:uri],
-        "",
+        "2",
         headers |> URI.encode_query(),
         ""
       ]
@@ -158,5 +176,35 @@ defmodule QCloud.COS do
       "q-signature=#{signature}"
     ]
     |> Enum.join("&")
+  end
+
+  defp _parse_response({:ok, %HTTPoison.Response{status_code: status_code} = response})
+       when status_code in 200..399 do
+    {:ok, response.status_code,
+     %{
+       body: response.body,
+       headers: response.headers,
+       status_code: response.status_code,
+       request: response.request,
+       request_url: response.request_url
+     }}
+  end
+
+  defp _parse_response({:ok, %HTTPoison.Response{status_code: status_code} = response}) do
+    error =
+      response.body
+      |> SweetXml.xpath(~x"//Error",
+        code: ~x"./Code/text()"so,
+        message: ~x"./Message/text()"so,
+        request_id: ~x"./RequestId/text()"so,
+        resource: ~x"./Resource/text()"so,
+        trace_id: ~x"./TraceId/text()"so
+      )
+
+    {:error, status_code, %{body: response.body, headers: response.headers, error: error}}
+  end
+
+  defp _parse_response({:error, %HTTPoison.Error{reason: reason}}) do
+    {:error, reason}
   end
 end

@@ -10,7 +10,7 @@ by adding `qcloud` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:qcloud, "~> 0.1.0"}
+    {:qcloud, "~> 0.1"}
   ]
 end
 ```

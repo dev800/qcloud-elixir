@@ -4,7 +4,7 @@ defmodule QCloud.Mixfile do
   def project do
     [
       app: :qcloud,
-      version: "0.1.0",
+      version: "0.1.1",
       elixir: "~> 1.4",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
@@ -32,7 +32,7 @@ defmodule QCloud.Mixfile do
   end
 
   defp description do
-    "Aliyun Utils"
+    "QCloud Utils"
   end
 
   defp package do
