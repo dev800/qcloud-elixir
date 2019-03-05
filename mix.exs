@@ -40,7 +40,7 @@ defmodule QCloud.Mixfile do
       files: ["lib", "config", "mix.exs", "README.md"],
       maintainers: ["dev800 <dev800@ku800.com>"],
       licenses: ["MIT"],
-      links: %{GitHub: "https://github.com/dev800/qcloud.git"}
+      links: %{GitHub: "https://github.com/dev800/qcloud-elixir.git"}
     ]
   end
 end
