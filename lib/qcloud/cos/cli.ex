@@ -19,7 +19,7 @@ defmodule QCloud.COS do
   def head_object(app, path) do
     config = app |> get_config()
     host = config |> Map.get(:host)
-    gmt_date = Timex.now() |> Timex.format!("%a, %d %b %Y %H:%M:%S GMT", :strftime)
+    gmt_date = _generate_gmt_date()
 
     "http://#{host}/#{path}"
     |> HTTPoison.head([
@@ -45,7 +45,7 @@ defmodule QCloud.COS do
   def delete_object(app, path) do
     config = app |> get_config()
     host = config |> Map.get(:host)
-    gmt_date = Timex.now() |> Timex.format!("%a, %d %b %Y %H:%M:%S GMT", :strftime)
+    gmt_date = _generate_gmt_date()
 
     "http://#{host}/#{path}"
     |> HTTPoison.delete([
@@ -71,7 +71,7 @@ defmodule QCloud.COS do
   def get_object(app, path) do
     config = app |> get_config()
     host = config |> Map.get(:host)
-    gmt_date = Timex.now() |> Timex.format!("%a, %d %b %Y %H:%M:%S GMT", :strftime)
+    gmt_date = _generate_gmt_date()
 
     "http://#{host}/#{path}"
     |> HTTPoison.get([
@@ -217,5 +217,9 @@ defmodule QCloud.COS do
 
   defp _parse_response({:error, %HTTPoison.Error{reason: reason}}) do
     {:error, reason}
+  end
+
+  defp _generate_gmt_date do
+    Timex.now() |> Timex.format!("%a, %d %b %Y %H:%M:%S GMT", :strftime)
   end
 end
