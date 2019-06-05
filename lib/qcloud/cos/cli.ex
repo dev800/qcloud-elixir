@@ -1,6 +1,6 @@
 defmodule QCloud.COS do
   @moduledoc """
-  doc: https://cloud.tencent.com/document/product/436/7778
+  api: https://cloud.tencent.com/document/product/436/7778
   """
 
   import SweetXml
