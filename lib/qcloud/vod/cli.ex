@@ -169,10 +169,10 @@ defmodule QCloud.VOD do
        %{
          Response: %{
            RequestId: request_id,
-           MediaInfoSet: media_info_set
+           MediaInfoSet: mediaInfoSet
          }
        }} ->
-        {:ok, %{request_id: request_id, media_info_set: media_info_set}}
+        {:ok, %{request_id: request_id, mediaInfoSet: mediaInfoSet}}
 
       error ->
         error
@@ -230,10 +230,10 @@ defmodule QCloud.VOD do
        %{
          Response: %{
            RequestId: request_id,
-           MediaInfoSet: media_info_set
+           MediaInfoSet: mediaInfoSet
          }
        }} ->
-        {:ok, %{request_id: request_id, media_info_set: media_info_set}}
+        {:ok, %{request_id: request_id, mediaInfoSet: mediaInfoSet}}
 
       error ->
         error

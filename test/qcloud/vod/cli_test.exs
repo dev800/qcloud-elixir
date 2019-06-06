@@ -5,6 +5,7 @@ defmodule QCloud.VODTest do
 
   @app :ku800
   @mp4_file_path Path.expand("./test/fixtures/trailer.mp4")
+  # @xyz_file_path Path.expand("./test/fixtures/trailer.xyz")
 
   describe "get_signature_v2" do
     test "ok" do
@@ -61,7 +62,7 @@ defmodule QCloud.VODTest do
         )
         |> QCloud.Logger.log_info()
 
-      assert {:ok, 200, _} = upload_result
+      assert {:ok, _} = upload_result
 
       # 确认上传
       assert {:ok,

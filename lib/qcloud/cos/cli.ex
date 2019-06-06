@@ -215,7 +215,7 @@ defmodule QCloud.COS do
 
   defp _parse_response({:ok, %HTTPoison.Response{status_code: status_code} = response})
        when status_code in 200..399 do
-    {:ok, response.status_code,
+    {:ok,
      %{
        body: response.body,
        headers: response.headers,
