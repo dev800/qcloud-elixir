@@ -2,7 +2,8 @@ defmodule QCloud.VOD do
   @moduledoc """
   url: https://cloud.tencent.com/product/vod
   doc: https://cloud.tencent.com/product/vod/developer
-  api: https://cloud.tencent.com/document/product/266/10688
+  api: https://cloud.tencent.com/document/product/266/10688 (2017年版本)
+  api: https://cloud.tencent.com/document/product/266/31753 （2018年版本）
   """
 
   alias QCloud.COS
@@ -13,11 +14,116 @@ defmodule QCloud.VOD do
     @configs |> Keyword.get(app, %{}) |> Map.get(:vod, %{})
   end
 
-  # @doc """
-  # 获取视频信息
+  @doc """
+  获取视频信息
 
-  # url: https://cloud.tencent.com/document/product/266/8586
-  # """
+  ## file_id
+
+  ## opts
+
+  * `:parts`
+  """
+  def delete_media(app, file_id, opts \\ []) do
+    conf = get_config(app)
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "DeleteMedia")
+      |> Keyword.put(:path, "/")
+
+    params = [
+      Action: "DeleteMedia",
+      Version: "2018-07-17",
+      SubAppId: opts[:sub_app_id],
+      FileId: file_id
+    ]
+
+    params =
+      opts
+      |> Keyword.get(:parts, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {part, index}, params ->
+        params |> Keyword.put(:"DeleteParts.#{index}", part)
+      end)
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           RequestId: request_id
+         }
+       }} ->
+        {:ok, %{request_id: request_id}}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  获取视频信息
+
+  ## file_ids
+
+  ## opts
+
+  * `:filters`
+  """
+  def describe_media_infos(app, file_ids, opts \\ []) do
+    conf = get_config(app)
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "DescribeMediaInfos")
+      |> Keyword.put(:path, "/")
+
+    params = [
+      Action: "DescribeMediaInfos",
+      Version: "2018-07-17",
+      SubAppId: opts[:sub_app_id]
+    ]
+
+    params =
+      file_ids
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {file_id, index}, params ->
+        params |> Keyword.put(:"FileIds.#{index}", file_id)
+      end)
+
+    params =
+      opts
+      |> Keyword.get(:filters, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {filter, index}, params ->
+        params |> Keyword.put(:"Filters.#{index}", filter)
+      end)
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           RequestId: request_id,
+           MediaInfoSet: media_info_set
+         }
+       }} ->
+        {:ok, %{request_id: request_id, media_info_set: media_info_set}}
+
+      error ->
+        error
+    end
+  end
 
   @doc """
   视频处理：加水印等

@@ -92,6 +92,11 @@ defmodule QCloud.VODTest do
 
       assert request_id |> String.length() > 0
       assert task_id |> String.length() > 0
+
+      # 查看视频的信息
+      assert {:ok, nil} = VOD.describe_media_infos(@app, [file_id])
+
+      #
     end
   end
 end
