@@ -85,7 +85,7 @@ defmodule QCloud.VOD do
   * `:delete_key_frame_descs`
   * `:clear_tags`
   """
-  def medify_media_info(app, file_id, opts \\ []) do
+  def modify_media_info(app, file_id, opts \\ []) do
     conf = get_config(app)
 
     opts =
