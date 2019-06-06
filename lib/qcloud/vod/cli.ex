@@ -5,13 +5,23 @@ defmodule QCloud.VOD do
   api: https://cloud.tencent.com/document/product/266/10688
   """
 
+  alias QCloud.COS
+
   @configs Application.get_env(:qcloud, :apps)
 
   def get_config(app) do
     @configs |> Keyword.get(app, %{}) |> Map.get(:vod, %{})
   end
 
+  # @doc """
+  # 获取视频信息
+
+  # url: https://cloud.tencent.com/document/product/266/8586
+  # """
+
   @doc """
+  视频处理：加水印等
+
   url: https://cloud.tencent.com/document/product/266/33427
 
   ## opts
@@ -71,9 +81,31 @@ defmodule QCloud.VOD do
     conf
     |> _build_url(params, opts)
     |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           RequestId: request_id,
+           TaskId: task_id
+         }
+       }} ->
+        {:ok,
+         %{
+           request_id: request_id,
+           task_id: task_id
+         }}
+
+      error ->
+        error
+    end
   end
 
   @doc """
+  获取客户端上传需要的票据
+
+  url: https://cloud.tencent.com/document/product/266/9221
+
   ## opts
 
   * `:class_tag`
@@ -90,23 +122,20 @@ defmodule QCloud.VOD do
       |> get_in([:tags, opts[:class_tag] || :default, :id])
       |> Kernel.||(0)
 
-    params = [
-      secretId: conf[:secret_id],
-      currentTimeStamp: timestamp,
-      expireTime: expireTime,
-      random: :random.uniform(1_000_000),
-      classId: class_id,
-      procedure: opts[:procedure],
-      taskPriority: opts[:task_riority],
-      taskNotifyMode: opts[:task_notify_mode] || "Finish",
-      sourceContext: opts[:source_context],
-      oneTimeValid: if(opts[:one_time_valid], do: 1, else: 0)
-    ]
-
     params =
-      params
-      |> Enum.filter(fn {_k, v} -> String.length("#{v}") > 0 end)
-      |> Enum.sort(fn {k, _v}, {k2, _v2} -> k < k2 end)
+      [
+        secretId: conf[:secret_id],
+        currentTimeStamp: timestamp,
+        expireTime: expireTime,
+        random: :random.uniform(1_000_000),
+        classId: class_id,
+        procedure: opts[:procedure],
+        taskPriority: opts[:task_riority],
+        taskNotifyMode: opts[:task_notify_mode] || "Finish",
+        sourceContext: opts[:source_context],
+        oneTimeValid: if(opts[:one_time_valid], do: 1, else: 0)
+      ]
+      |> _params_normalize()
 
     query_string = params |> URI.encode_query()
 
@@ -118,18 +147,25 @@ defmodule QCloud.VOD do
   @doc """
   发起上传
 
-  url: https://cloud.tencent.com/document/product/266/9756
+  url: https://cloud.tencent.com/document/product/266/31767
 
   ## opts
 
-  * `video_type` 必填
-  * `video_name`
-  * `cover_type`
-  * `cover_name`
-  * `source_context`
-  * `procedure`
-  * `video_storage_path`
-  * `class_tag`
+  * `:media_type`
+    - 视频：mp4，ts，flv，wmv，asf，rm，rmvb，mpg，mpeg，3gp，mov，webm，mkv，avi。
+    - 音频：mp3，m4a，flac，ogg，wav
+
+  * `:media_name`
+
+  * `:cover_type`
+    - 封面类型 jpg，jpeg，png，gif，bmp，tiff，ai，cdr，eps。
+
+  * `:procedure`
+  * `:expire_time`
+  * `:storage_region`
+  * `:class_tag`
+  * `:source_context`
+  * `:sub_app_id`
   """
   def apply_upload(app, opts \\ []) do
     conf = get_config(app)
@@ -137,9 +173,9 @@ defmodule QCloud.VOD do
     opts =
       opts
       |> Keyword.put(:method, "GET")
-      |> Keyword.put(:host, "vod.api.qcloud.com")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
       |> Keyword.put(:action, "ApplyUpload")
-      |> Keyword.put(:path, "/v2/index.php")
+      |> Keyword.put(:path, "/")
 
     class_id =
       conf
@@ -147,65 +183,111 @@ defmodule QCloud.VOD do
       |> Kernel.||(0)
 
     params = [
+      Action: "ApplyUpload",
+      Version: "2018-07-17",
       Region: conf[:region],
-      videoType: opts[:video_type],
-      videoName: opts[:video_name],
-      coverType: opts[:cover_type],
-      coverName: opts[:cover_name],
-      sourceContext: opts[:source_context],
-      procedure: opts[:procedure],
-      videoStoragePath: opts[:video_storage_path],
-      classId: class_id
+      MediaType: opts[:media_type],
+      MediaName: opts[:media_name],
+      CoverType: opts[:cover_type],
+      Procedure: opts[:procedure],
+      ExpireTime: opts[:expire_ime],
+      StorageRegion: opts[:storage_region],
+      ClassId: class_id,
+      SourceContext: opts[:source_context],
+      SubAppId: opts[:sub_app_id]
     ]
 
     conf
     |> _build_url(params, opts)
     |> HTTPoison.get()
+    |> _parse_response()
     |> case do
-      {:ok, %HTTPoison.Response{body: body, status_code: 200}} ->
-        body
-        |> Jason.decode(keys: :atoms)
-        |> case do
-          {:ok, %{code: 0} = data} ->
-            # eg.
-            #  %{
-            #    code: 0,
-            #    codeDesc: "Success",
-            #    message: "",
-            #    storageAppId: 10_022_853,
-            #    storageBucket: "8aaa9f5evodgzp1251033691",
-            #    storageRegion: "gzp",
-            #    storageRegionV5: "ap-guangzhou-2",
-            #    video: %{
-            #      storagePath:
-            #        "/8aaa9f5evodgzp1251033691/3eb051435285890789923358946/7vMDjanAGZMA.mp4",
-            #      storageSignature:
-            #        "JeYneTwaHcHkdajSATTKzXNGa1RhPTEwMDIyODUzJmI9OGFhYTlmNWV2b2RnenAxMjUxMDMzNjkxJms9QUtJRElXZTdBdEkxMFBRa204UkVEbDRVTzdJNm15bjZOREY3JmU9MTU1OTg5NjUzMiZ0PTE1NTk3MjM3MzImcj0xOTk5Nzg3NzYzJmY9LzEwMDIyODUzLzhhYWE5ZjVldm9kZ3pwMTI1MTAzMzY5MS84YWFhOWY1ZXZvZGd6cDEyNTEwMzM2OTEvM2ViMDUxNDM1Mjg1ODkwNzg5OTIzMzU4OTQ2Lzd2TURqYW5BR1pNQS5tcDQ="
-            #    },
-            #    vodSessionKey:
-            #      "3FEmq9DWHlB/Cekv0oUhRk1a35GeKd8umpeWV5N04EAOH1swAIGPs5h01B0pVHAm3VKVkSo5zEKZ+lH3eLQ3xWDo2ChWHOwjJPcT5ed46J3BY4/0JAqcaHeOT4pqGG669aUPCpRGeaCgeAt8fZO8zE54ZPFyR+fHArmvGxhET22ULjE5Ou63A5GDQJMHrKuNSJyByvzLQP/9JSYJlvLhIhpS57iMtIWjEbUdk1gF7CcQ7joxSs13HhWMmSbSukOZk58hTOhtTaJXRa9+24eAkUaq7jNIleMxot2NdcDnee/mMLb5AB3WsU38iKDgAGQAp4s0JKkyl4pJ0v7X35HOgajrBEStSIGwpgi6jtv6LdMYqV2nLzc/PyvZSOUAwaZrcBFHRVGmqLmw56+Kfpz8wNTgWXegvRAT+IZl14tjOuOnfoQyVw6rs9QhBQJIHHa0dpKr5m4qBM7kaMqjwU7Wpw=="
-            #  }
+      {:ok,
+       %{
+         Response: %{
+           CoverStoragePath: cover_storage_path,
+           MediaStoragePath: media_storage_path,
+           RequestId: request_id,
+           StorageBucket: storage_bucket,
+           StorageRegion: storage_region,
+           TempCertificate: temp_certificate,
+           # %{
+           #   ExpiredTime: 1_559_796_587,
+           #   SecretId: "AKIDIGyo57k4KZx6ps9UmQiFLxO1X4Ht94LX",
+           #   SecretKey: "gKcR4zjHpdP0eUPQNUtJLDvlEbi2uYNW",
+           #   Token: "382c1d9b532e57e6a9cba7503c6c4989adc12ef430001"
+           # },
+           VodSessionKey: vod_session_key
+         }
+       }} ->
+        {:ok,
+         %{
+           cover_storage_path: cover_storage_path,
+           media_storage_path: media_storage_path,
+           request_id: request_id,
+           storage_bucket: storage_bucket,
+           storage_region: storage_region,
+           temp_certificate: temp_certificate,
+           vod_session_key: vod_session_key
+         }}
 
-            {:ok,
-             %{
-               code: data[:code],
-               logic: data[:codeDesc],
-               message: data[:message],
-               storageAppId: data[:storageAppId],
-               storageBucket: data[:storageBucket],
-               storageRegion: data[:storageRegion],
-               storageRegionV5: data[:storageRegionV5],
-               video: data[:video],
-               cover: data[:cover],
-               vodSessionKey: data[:vodSessionKey]
-             }}
+      error ->
+        error
+    end
+  end
 
-          {:ok, %{code: code, message: message, codeDesc: codeDesc}} ->
-            {:error, 200, %{code: code, message: message, logic: codeDesc}}
-        end
+  @doc """
+  确认上传
 
-      {:ok, %HTTPoison.Response{body: body, headers: headers, status_code: status_code}} ->
-        {:error, status_code, %{body: body, headers: headers}}
+  url: https://cloud.tencent.com/document/product/266/31766
+
+  ## opts
+
+  * `:vod_session_key`
+  * `:sub_app_id`
+  """
+  def commit_upload(app, opts \\ []) do
+    conf = get_config(app)
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "CommitUpload")
+      |> Keyword.put(:path, "/")
+
+    params = [
+      Action: "CommitUpload",
+      Version: "2018-07-17",
+      Region: conf[:region],
+      VodSessionKey: opts[:vod_session_key],
+      SubAppId: opts[:sub_app_id]
+    ]
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           FileId: file_id,
+           MediaUrl: media_url,
+           CoverUrl: cover_url,
+           RequestId: request_id
+         }
+       }} ->
+        {:ok,
+         %{
+           file_id: file_id,
+           media_url: media_url,
+           cover_url: cover_url,
+           request_id: request_id
+         }}
+
+      error ->
+        error
     end
   end
 
@@ -214,90 +296,49 @@ defmodule QCloud.VOD do
 
   url: https://cloud.tencent.com/document/product/266/9758
 
+  ## app
+
+  ## file
+
+  ## content_type
+
   ## opts
 
-  * `:appid`
-  * `:bucket_name`
-  * `:store_path`
-  * `:region`
-  * `:authorization`
-
-  * `:file_path`
-  * `:biz`
+  * `:storage_path`
+  * `:storage_region`
+  * `:storage_bucket`
+  * `:secret_id`
+  * `:secret_key`
+  * `:token`
   """
-  def simple_upload(app, opts \\ []) do
-    _conf = get_config(app)
+  def simple_upload(app, file, content_type, opts \\ []) do
+    path = opts[:storage_path]
+    host = "#{opts[:storage_bucket]}.cos.#{opts[:storage_region]}.myqcloud.com"
 
-    biz_attr = opts[:biz] |> Jason.encode!()
-    file_path = opts[:file_path]
-    file = File.read!(file_path)
-    file_sha1 = :crypto.hash(:sha, file) |> Base.encode16(case: :lower)
-    content_type = QCloud.mime_type!(file_path)
-    authorization = opts[:authorization]
+    opts =
+      opts
+      |> Keyword.put(:host, host)
+      |> Keyword.put(:token, opts[:token])
+      |> Keyword.put(:secret_id, opts[:secret_id])
+      |> Keyword.put(:secret_key, opts[:secret_key])
 
-    [
-      "https://",
-      "#{opts[:region]}.file.myqcloud.com",
-      "/files/v2/#{opts[:appid]}/#{opts[:bucket_name]}#{opts[:store_path]}"
-    ]
-    |> Enum.join()
-    |> HTTPoison.post(
-      {:multipart,
-       [
-         {"sha", file_sha1},
-         {"biz_attr", biz_attr},
-         {"op", "upload"},
-         {:file, file_path,
-          {"form-data",
-           [
-             {"name", "filecontent"},
-             {"filename", file_path}
-           ]},
-          [
-            {"Content-Type", content_type}
-          ]}
-       ]},
-      [{"Content-Type", "multipart/form-data"}, {"Authorization", authorization}]
-    )
+    COS.put_object(app, file, content_type, path, opts)
   end
 
   defp _build_url(conf, params, opts) do
-    common_params = _common_params(conf, params, opts)
-
-    [
-      "https://",
-      opts[:host],
-      opts[:path],
-      "?",
-      common_params[:query_string],
-      "&",
-      URI.encode_query(%{Signature: common_params[:sign]})
-    ]
-    |> Enum.join()
-  end
-
-  ## opts
-  #
-  # * `:method`
-  # * `:host`
-  # * `:path`
-  # * `:action`
-  #
-  defp _common_params(conf, params, opts) do
     timestamp = Timex.now() |> Timex.to_unix()
+    secret_id = opts[:secret_id] || conf[:secret_id]
+    secret_key = opts[:secret_key] || conf[:secret_key]
 
-    query =
+    params =
       params
       |> Keyword.merge(
         Action: opts[:action],
-        Nonce: :random.uniform(1_000_000),
-        SecretId: conf[:secret_id],
+        Nonce: :random.uniform(10_000_000),
+        SecretId: secret_id,
         Timestamp: timestamp
       )
-      |> Enum.filter(fn {_k, v} -> String.length("#{v}") > 0 end)
-      |> Enum.sort(fn {k, _v}, {k2, _v2} -> k < k2 end)
-
-    query_string = query |> URI.encode_query()
+      |> _params_normalize()
 
     src =
       [
@@ -305,17 +346,66 @@ defmodule QCloud.VOD do
         opts[:host],
         opts[:path] || "/",
         "?",
-        query_string
+        params |> _join_pairs()
       ]
       |> Enum.join()
 
-    sign = :crypto.hmac(:sha, conf[:secret_key], src) |> Base.encode64()
+    signature = :crypto.hmac(:sha, secret_key, src) |> Base.encode64()
 
-    %{
-      query_string: query_string,
-      query: query,
-      src: src,
-      sign: sign
-    }
+    params =
+      params
+      |> Keyword.put(:Signature, signature)
+      |> _params_normalize()
+
+    [
+      "https://",
+      opts[:host],
+      opts[:path],
+      "?",
+      URI.encode_query(params)
+    ]
+    |> Enum.join()
+    |> QCloud.Logger.log_warn()
+  end
+
+  defp _params_normalize(params) do
+    params
+    |> Enum.filter(fn {_k, v} -> String.length("#{v}") > 0 end)
+    |> Enum.sort(fn {k, _v}, {k2, _v2} -> k < k2 end)
+  end
+
+  defp _join_pairs(params) do
+    params
+    |> Enum.map(fn {k, v} ->
+      "#{k}=#{v}"
+    end)
+    |> Enum.join("&")
+  end
+
+  defp _parse_response(response) do
+    response
+    |> case do
+      {:ok, %HTTPoison.Response{body: body, status_code: 200}} ->
+        body
+        |> Jason.decode(keys: :atoms)
+        |> case do
+          {:ok,
+           %{
+             Response: %{
+               Error: %{
+                 Code: code,
+                 Message: message
+               }
+             }
+           }} ->
+            {:error, 200, %{code: code, message: message}}
+
+          {:ok, data} ->
+            {:ok, data}
+        end
+
+      {:ok, %HTTPoison.Response{body: body, headers: headers, status_code: status_code}} ->
+        {:error, status_code, %{body: body, headers: headers}}
+    end
   end
 end

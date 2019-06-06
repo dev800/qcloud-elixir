@@ -6,6 +6,8 @@ defmodule QCloud.COS do
   import SweetXml
 
   @configs Application.get_env(:qcloud, :apps)
+  @long_timeout 2 * 60 * 1000
+  @long_recv_timeout 2 * 60 * 1000
 
   def get_config(app) do
     @configs |> Keyword.get(app, %{}) |> Map.get(:cos, %{})
@@ -16,20 +18,23 @@ defmodule QCloud.COS do
 
   doc: https://cloud.tencent.com/document/product/436/7745
   """
-  def head_object(app, path) do
+  def head_object(app, path, opts \\ []) do
     config = app |> get_config()
     host = config |> Map.get(:host)
     gmt_date = _generate_gmt_date()
+    path = if String.starts_with?(path, "/"), do: path, else: "/#{path}"
 
-    "http://#{host}/#{path}"
+    "http://#{host}#{path}"
     |> HTTPoison.head([
       {"date", gmt_date},
       {"host", host},
       {"authorization",
        _auth_string(
+         secret_id: opts[:secret_id] || config[:secret_id],
+         secret_key: opts[:secret_key] || config[:secret_key],
          method: "head",
          host: host,
-         uri: "/#{path}",
+         path: path,
          config: config,
          gmt_date: gmt_date
        )}
@@ -42,20 +47,23 @@ defmodule QCloud.COS do
 
   doc: https://cloud.tencent.com/document/product/436/8289
   """
-  def delete_object(app, path) do
+  def delete_object(app, path, opts \\ []) do
     config = app |> get_config()
     host = config |> Map.get(:host)
     gmt_date = _generate_gmt_date()
+    path = if String.starts_with?(path, "/"), do: path, else: "/#{path}"
 
-    "http://#{host}/#{path}"
+    "http://#{host}#{path}"
     |> HTTPoison.delete([
       {"date", gmt_date},
       {"host", host},
       {"authorization",
        _auth_string(
+         secret_id: opts[:secret_id] || config[:secret_id],
+         secret_key: opts[:secret_key] || config[:secret_key],
          method: "delete",
          host: host,
-         uri: "/#{path}",
+         path: path,
          config: config,
          gmt_date: gmt_date
        )}
@@ -68,20 +76,23 @@ defmodule QCloud.COS do
 
   doc: https://cloud.tencent.com/document/product/436/7753
   """
-  def get_object(app, path) do
+  def get_object(app, path, opts \\ []) do
     config = app |> get_config()
     host = config |> Map.get(:host)
     gmt_date = _generate_gmt_date()
+    path = if String.starts_with?(path, "/"), do: path, else: "/#{path}"
 
-    "http://#{host}/#{path}"
+    "http://#{host}#{path}"
     |> HTTPoison.get([
       {"date", gmt_date},
       {"host", host},
       {"authorization",
        _auth_string(
+         secret_id: opts[:secret_id] || config[:secret_id],
+         secret_key: opts[:secret_key] || config[:secret_key],
          method: "get",
          host: host,
-         uri: "/#{path}",
+         path: path,
          config: config,
          gmt_date: gmt_date
        )}
@@ -93,42 +104,64 @@ defmodule QCloud.COS do
   提交对象数据
 
   doc: https://cloud.tencent.com/document/product/436/7749
+
+  ## app
+
+  ## file
+
+  ## content_type
+
+  ## path
+
+  ## opts
+
+  * `:host`
+  * `:secret_id`
+  * `:secret_key`
   """
-  def put_object(app, file, content_type, path) do
+  def put_object(app, file, content_type, path, opts \\ []) do
     config = app |> get_config()
-    host = config |> Map.get(:host)
+    host = opts[:host] || config[:host]
     content_sha = :sha |> :crypto.hash(file) |> Base.encode16(case: :lower)
     storage_class = "standard"
+    path = if String.starts_with?(path, "/"), do: path, else: "/#{path}"
 
-    "http://#{host}/#{path}"
-    |> HTTPoison.put(file, [
-      {"content-type", content_type},
-      {"x-cos-storage-class", storage_class},
-      {"x-cos-content-sha1", content_sha},
-      {"host", host},
-      {"authorization",
-       _auth_string(
-         method: "put",
-         host: host,
-         uri: "/#{path}",
-         config: config,
-         content_type: content_type,
-         content_sha: content_sha,
-         storage_class: storage_class
-       )}
-    ])
+    "http://#{host}#{path}"
+    |> HTTPoison.put(
+      file,
+      [
+        {"content-type", content_type},
+        {"host", host},
+        {"x-cos-content-sha1", content_sha},
+        {"x-cos-storage-class", storage_class},
+        {"x-cos-security-token", opts[:token]},
+        {"authorization",
+         _auth_string(
+           secret_id: opts[:secret_id] || config[:secret_id],
+           secret_key: opts[:secret_key] || config[:secret_key],
+           token: opts[:token],
+           method: "put",
+           host: host,
+           path: path,
+           content_type: content_type,
+           content_sha: content_sha,
+           storage_class: storage_class
+         )}
+      ],
+      timeout: @long_timeout,
+      recv_timeout: @long_recv_timeout
+    )
     |> _parse_response()
   end
 
+  # https://cloud.tencent.com/document/product/436/7778
   defp _auth_string(opts) do
-    # https://cloud.tencent.com/document/product/436/7778
     host = opts[:host]
     content_sha = opts[:content_sha]
     content_type = opts[:content_type]
     storage_class = opts[:storage_class]
-    config = opts[:config] || %{}
-    secret_id = config[:secret_id]
-    secret_key = config[:secret_key]
+    secret_id = opts[:secret_id]
+    secret_key = opts[:secret_key]
     start_time = Timex.now() |> Timex.to_unix()
     end_time = start_time + 80006
     time = "#{start_time};#{end_time}"
@@ -138,14 +171,16 @@ defmodule QCloud.COS do
         "content-type": content_type,
         host: host,
         "x-cos-content-sha1": content_sha,
+        "x-cos-security-token": opts[:token],
         "x-cos-storage-class": storage_class
       ]
-      |> Enum.filter(fn {_k, v} -> not is_nil(v) end)
+      |> Enum.sort(fn {k1, _v1}, {k2, _v2} -> k1 < k2 end)
+      |> Enum.filter(fn {_k, v} -> String.length("#{v}") > 0 end)
 
     http_string =
       [
         opts[:method],
-        opts[:uri],
+        opts[:path],
         "",
         headers |> URI.encode_query(),
         ""
@@ -154,7 +189,7 @@ defmodule QCloud.COS do
 
     http_string_sha = :sha |> :crypto.hash(http_string) |> Base.encode16(case: :lower)
 
-    secret_key_sign =
+    sign_key =
       :sha
       |> :crypto.hmac(secret_key, time)
       |> Base.encode16(case: :lower)
@@ -163,7 +198,7 @@ defmodule QCloud.COS do
 
     signature =
       :sha
-      |> :crypto.hmac(secret_key_sign, string_to_sign)
+      |> :crypto.hmac(sign_key, string_to_sign)
       |> Base.encode16(case: :lower)
 
     [
