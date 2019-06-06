@@ -94,9 +94,13 @@ defmodule QCloud.VODTest do
       assert task_id |> String.length() > 0
 
       # 查看视频的信息
-      assert {:ok, nil} = VOD.describe_media_infos(@app, [file_id])
+      assert {:ok, _} = VOD.describe_media_infos(@app, [file_id]) |> QCloud.Logger.log_info()
 
-      #
+      # 修改视频信息
+      assert {:ok, _} = VOD.medify_media_info(@app, file_id, name: "哈哈哈😀") |> QCloud.Logger.log_info()
+
+      # 删除视频信息
+      assert {:ok, _} = VOD.delete_media(@app, file_id) |> QCloud.Logger.log_info()
     end
   end
 end

@@ -17,11 +17,13 @@ defmodule QCloud.VOD do
   @doc """
   获取视频信息
 
+  url: https://cloud.tencent.com/document/api/266/31764
+
   ## file_id
 
   ## opts
 
-  * `:parts`
+  * `:parts` eg. [["Type", "TranscodeFiles"], ["Definition", "230"]]
   """
   def delete_media(app, file_id, opts \\ []) do
     conf = get_config(app)
@@ -45,7 +47,7 @@ defmodule QCloud.VOD do
       |> Keyword.get(:parts, [])
       |> Enum.with_index()
       |> Enum.reduce(params, fn {part, index}, params ->
-        params |> Keyword.put(:"DeleteParts.#{index}", part)
+        params |> Keyword.put(:"DeleteParts.#{index}.#{part |> Enum.at(0)}", part[1])
       end)
 
     conf
@@ -67,7 +69,120 @@ defmodule QCloud.VOD do
   end
 
   @doc """
+  修改视频信息
+
+  url: https://cloud.tencent.com/document/api/266/31762
+
+  ## file_id
+
+  ## opts
+
+  * `:name`
+  * `:description`
+  * `:class_tag`
+  * `:clear_key_frame_descs`
+  * `:add_key_frame_descs`    eg. [[1.0, "春天来了", ["10.2", "夏天来了"]]
+  * `:delete_key_frame_descs`
+  * `:clear_tags`
+  """
+  def medify_media_info(app, file_id, opts \\ []) do
+    conf = get_config(app)
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "ModifyMediaInfo")
+      |> Keyword.put(:path, "/")
+
+    params =
+      [
+        Action: "ModifyMediaInfo",
+        Version: "2018-07-17",
+        FileId: file_id,
+        SubAppId: opts[:sub_app_id]
+      ]
+      |> QCloud.if_call(opts[:name], fn params ->
+        params |> Keyword.put(:Name, opts[:name])
+      end)
+      |> QCloud.if_call(opts[:description], fn params ->
+        params |> Keyword.put(:Description, opts[:description])
+      end)
+      |> QCloud.if_call(opts[:class_tag], fn params ->
+        class_id =
+          conf
+          |> get_in([:tags, opts[:class_tag] || :default, :id])
+          |> Kernel.||(0)
+
+        params |> Keyword.put(:ClassId, class_id)
+      end)
+      |> QCloud.if_call(opts[:cover_data], fn params ->
+        params |> Keyword.put(:CoverData, opts[:cover_data])
+      end)
+      |> QCloud.if_call(opts[:clear_key_frame_descs], fn params ->
+        params |> Keyword.put(:ClearKeyFrameDescs, 1)
+      end)
+      |> QCloud.if_call(opts[:clear_tags], fn params ->
+        params |> Keyword.put(:ClearTags, 1)
+      end)
+
+    params =
+      opts
+      |> Keyword.get(:add_key_frame_descs, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {desc, index}, params ->
+        params
+        |> Keyword.put(:"AddKeyFrameDescs.#{index}.TimeOffset", desc |> Enum.at(0))
+        |> Keyword.put(:"AddKeyFrameDescs.#{index}.Content", desc |> Enum.at(0))
+      end)
+
+    params =
+      opts
+      |> Keyword.get(:delete_key_frame_descs, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {offset, index}, params ->
+        params |> Keyword.put(:"DeleteKeyFrameDescs.#{index}", offset)
+      end)
+
+    params =
+      opts
+      |> Keyword.get(:add_tags, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {tag, index}, params ->
+        params |> Keyword.put(:"AddTags.#{index}", tag)
+      end)
+
+    params =
+      opts
+      |> Keyword.get(:delete_tags, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {tag, index}, params ->
+        params |> Keyword.put(:"DeleteTags.#{index}", tag)
+      end)
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           RequestId: request_id,
+           MediaInfoSet: media_info_set
+         }
+       }} ->
+        {:ok, %{request_id: request_id, media_info_set: media_info_set}}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
   获取视频信息
+
+  url: https://cloud.tencent.com/document/product/266/8586
 
   ## file_ids
 
@@ -471,7 +586,7 @@ defmodule QCloud.VOD do
       URI.encode_query(params)
     ]
     |> Enum.join()
-    |> QCloud.Logger.log_warn()
+    |> QCloud.Logger.log_info()
   end
 
   defp _params_normalize(params) do
