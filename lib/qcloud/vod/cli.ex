@@ -241,6 +241,81 @@ defmodule QCloud.VOD do
   end
 
   @doc """
+  获取任务信息
+
+  url: https://cloud.tencent.com/document/api/266/33431
+
+  ## task_id
+
+  ## opts
+
+  * `:sub_app_id`
+  """
+  def describe_task_detail(app, task_id, opts \\ []) do
+    conf = get_config(app)
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "DescribeTaskDetail")
+      |> Keyword.put(:path, "/")
+
+    params = [
+      Action: "DescribeTaskDetail",
+      Version: "2018-07-17",
+      TaskId: task_id,
+      SubAppId: opts[:sub_app_id]
+    ]
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           TaskType: taskType,
+           Status: status,
+           CreateTime: createdAt,
+           BeginProcessTime: beginProcessAt,
+           FinishTime: finishAt,
+           ProcedureTask: procedureTask,
+           EditMediaTask: editMediaTask,
+           WechatPublishTask: wechatPublishTask,
+           TranscodeTask: transcodeTask,
+           SnapshotByTimeOffsetTask: snapshotByTimeOffsetTask,
+           ConcatTask: concatTask,
+           ClipTask: clipTask,
+           CreateImageSpriteTask: createImageSpriteTask,
+           RequestId: request_id
+         }
+       }} ->
+        {:ok,
+         %{
+           request_id: request_id,
+           status: status,
+           taskType: taskType,
+           createdAt: createdAt,
+           beginProcessAt: beginProcessAt,
+           finishAt: finishAt,
+           procedureTask: procedureTask,
+           editMediaTask: editMediaTask,
+           wechatPublishTask: wechatPublishTask,
+           transcodeTask: transcodeTask,
+           snapshotByTimeOffsetTask: snapshotByTimeOffsetTask,
+           concatTask: concatTask,
+           clipTask: clipTask,
+           createImageSpriteTask: createImageSpriteTask
+         }}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
   视频处理：加水印等
 
   url: https://cloud.tencent.com/document/product/266/33427
