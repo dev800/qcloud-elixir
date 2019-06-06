@@ -316,6 +316,60 @@ defmodule QCloud.VOD do
   end
 
   @doc """
+  使用任务流模板进行视频处理
+
+  url: https://cloud.tencent.com/document/product/266/34782
+
+  ## file_id
+
+  ## procedure
+  """
+  def process_media_by_procedure(app, file_id, procedure \\ :default, opts \\ []) do
+    conf = get_config(app)
+
+    procedure_name =
+      conf
+      |> get_in([:procedures, procedure])
+      |> Kernel.||(get_in(conf, [:procedures, :deafult]))
+
+    params = [
+      Action: "ProcessMediaByProcedure",
+      FileId: file_id,
+      Version: "2018-07-17",
+      ProcedureName: procedure_name
+    ]
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "ProcessMediaByProcedure")
+      |> Keyword.put(:path, "/")
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           RequestId: request_id,
+           TaskId: task_id
+         }
+       }} ->
+        {:ok,
+         %{
+           request_id: request_id,
+           task_id: task_id
+         }}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
   视频处理：加水印等
 
   url: https://cloud.tencent.com/document/product/266/33427
@@ -325,6 +379,7 @@ defmodule QCloud.VOD do
   * `:file_id` 文件ID
   * `:watermark` true/false
   * `:definitions` 20/30 eg. [20, 30]
+  * `:sample_snapshots` [10]
   """
   def process_media(app, file_id, opts \\ []) do
     conf = get_config(app)

@@ -10,6 +10,7 @@ config :qcloud, :apps,
       secret_key: "xxx"
     },
     vod: %{
+      procedures: %{default: "Default_xxx"},
       host: "vod.api.qcloud.com",
       app_id: "xxx",
       region: "xxx",
