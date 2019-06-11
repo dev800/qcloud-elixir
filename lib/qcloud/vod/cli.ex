@@ -241,6 +241,115 @@ defmodule QCloud.VOD do
   end
 
   @doc """
+  获取单个文件的描述
+  """
+  def describe_media_info(app, file_id, opts \\ []) do
+    app
+    |> describe_media_infos([file_id], opts)
+    |> case do
+      {:ok, %{mediaInfoSet: infos}} ->
+        infos
+        |> Enum.find(fn info ->
+          info[:FileId] == file_id
+        end)
+        |> case do
+          nil ->
+            {:error, 404, "not_found"}
+
+          info ->
+            {:ok, info}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  搜索视频
+
+  url: https://cloud.tencent.com/document/product/266/31813
+
+  ## file_ids
+
+  ## opts
+
+  * `:text`
+  * `:vid`
+  * `:limit`
+  * `:offset`
+  * `:tags`
+  * `:class_tags`
+  """
+  def search_medias(app, opts \\ []) do
+    conf = get_config(app)
+
+    opts =
+      opts
+      |> Keyword.put(:method, "GET")
+      |> Keyword.put(:host, "vod.tencentcloudapi.com")
+      |> Keyword.put(:action, "SearchMedia")
+      |> Keyword.put(:path, "/")
+
+    params = [
+      Text: opts[:text],
+      Vid: opts[:vid],
+      Limit: opts[:limit],
+      Offset: opts[:offset],
+      Action: "SearchMedia",
+      Version: "2018-07-17",
+      SubAppId: opts[:sub_app_id]
+    ]
+
+    params =
+      opts
+      |> Keyword.get(:tags, [])
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {tag, index}, params ->
+        params |> Keyword.put(:"Tags.#{index}", tag)
+      end)
+
+    params =
+      opts
+      |> Keyword.get(:class_tags, [:default])
+      |> Enum.reduce([], fn class_tag, class_ids ->
+        class_id =
+          conf
+          |> get_in([:tags, class_tag, :id])
+          |> Kernel.||(0)
+
+        if class_id do
+          class_ids ++ [class_id]
+        else
+          class_ids
+        end
+      end)
+      |> Enum.uniq()
+      |> Enum.with_index()
+      |> Enum.reduce(params, fn {class_id, index}, params ->
+        params |> Keyword.put(:"ClassIds.#{index}", class_id)
+      end)
+
+    conf
+    |> _build_url(params, opts)
+    |> HTTPoison.get()
+    |> _parse_response()
+    |> case do
+      {:ok,
+       %{
+         Response: %{
+           RequestId: request_id,
+           MediaInfoSet: mediaInfoSet
+         }
+       }} ->
+        {:ok, %{request_id: request_id, mediaInfoSet: mediaInfoSet}}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
   获取任务信息
 
   url: https://cloud.tencent.com/document/api/266/33431
